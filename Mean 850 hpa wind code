@@ -1,0 +1,53 @@
+import xarray as xr
+import numpy as np
+import matplotlib.pyplot as plt
+import cartopy.crs as ccrs
+import cartopy.feature as cfeature
+from wrf import getvar, to_np, latlon_coords
+from netCDF4 import Dataset
+import glob
+
+# Path to WRF output files
+files = sorted(glob.glob("/home/iitm/wrf_model/Build_WRF/WRF/run/wrfout_d01_2025-08-*"))
+
+u_list, v_list = [], []
+
+# Read U and V winds at 850 hPa
+for f in files:
+    ncfile = Dataset(f)
+    u850 = getvar(ncfile, "ua", units="m s-1")[0]  # First time index
+    v850 = getvar(ncfile, "va", units="m s-1")[0]
+    u_list.append(to_np(u850))
+    v_list.append(to_np(v850))
+
+u_array = np.array(u_list)
+v_array = np.array(v_list)
+
+# Time-mean
+u_mean = np.mean(u_array, axis=0)
+v_mean = np.mean(v_array, axis=0)
+wind_speed = np.sqrt(u_mean**2 + v_mean**2)
+
+# Get coordinates
+lat, lon = latlon_coords(getvar(Dataset(files[0]), "ua"))
+
+# Plot
+fig = plt.figure(figsize=(10,6))
+ax = plt.axes(projection=ccrs.PlateCarree())
+ax.set_extent([67, 90, 5, 30], crs=ccrs.PlateCarree())
+
+cf = ax.contourf(to_np(lon), to_np(lat), wind_speed,
+                 levels=np.arange(0, 22, 2), cmap="OrRd", extend='both')
+
+# Add wind arrows
+skip = (slice(None, None, 5), slice(None, None, 5))
+ax.quiver(to_np(lon)[skip], to_np(lat)[skip], u_mean[skip], v_mean[skip], scale=200)
+
+# Map features
+ax.coastlines()
+ax.add_feature(cfeature.BORDERS)
+ax.add_feature(cfeature.STATES, edgecolor='gray')
+plt.colorbar(cf, ax=ax, orientation="vertical", label="Wind Speed (m/s)")
+plt.title("Mean 850 hPa Winds (19–23 Aug 2025)")
+plt.tight_layout()
+plt.show()
