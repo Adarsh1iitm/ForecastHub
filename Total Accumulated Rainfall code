@@ -1,0 +1,61 @@
+import matplotlib.pyplot as plt
+import cartopy.crs as ccrs
+import cartopy.feature as cfeature
+from cartopy.io.shapereader import Reader
+from cartopy.feature import ShapelyFeature
+from wrf import getvar, to_np, latlon_coords
+from netCDF4 import Dataset
+import glob
+import numpy as np
+
+# Load WRF output files
+files = sorted(glob.glob("/home/iitm/wrf_model/Build_WRF/WRF/run/wrfout_d01_2025-08-*"))
+
+# Read and accumulate rainfall
+rain_list = []
+for f in files:
+    ncfile = Dataset(f)
+    rain = getvar(ncfile, "RAINC") + getvar(ncfile, "RAINNC")
+    rain_list.append(to_np(rain))
+
+rain_array = np.array(rain_list)
+total_rain = rain_array[-1] - rain_array[0]
+
+# Get lat/lon from first file
+lat, lon = latlon_coords(getvar(Dataset(files[0]), "RAINC"))
+
+# Plot setup
+fig = plt.figure(figsize=(10, 6))
+ax = plt.axes(projection=ccrs.PlateCarree())
+ax.set_extent([67, 95, 5, 30], crs=ccrs.PlateCarree())  # Focus on India
+
+# Plot rainfall
+contour = ax.contourf(to_np(lon), to_np(lat), total_rain,
+                      levels=np.arange(0, 250, 1),
+                      cmap='OrRd', extend='both',
+                      transform=ccrs.PlateCarree())
+
+# Use custom shapefile only (no default Cartopy features to avoid overlap)
+shp_path = "/home/iitm/wrf_model/Output_Analysis/india_st.shp"
+shape_feature = ShapelyFeature(Reader(shp_path).geometries(),
+                               ccrs.PlateCarree(),
+                               edgecolor='black', facecolor='none', linewidth=0.7)
+ax.add_feature(shape_feature)
+
+# Add only borders (optional: you can skip if not needed)
+ax.add_feature(cfeature.BORDERS, linewidth=0.6)
+
+# Gridlines with labels
+gl = ax.gridlines(draw_labels=True, linewidth=0.3, color='gray', alpha=0.5, linestyle='--')
+gl.top_labels = False
+gl.right_labels = False
+gl.xlabel_style = {'size': 9}
+gl.ylabel_style = {'size': 9}
+
+# Colorbar
+plt.colorbar(contour, ax=ax, orientation='vertical', label='Rainfall (mm)')
+
+# Title
+plt.title("Total Accumulated Rainfall (19–23 Aug 2025)")
+plt.tight_layout()
+plt.show()
